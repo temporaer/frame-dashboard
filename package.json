@@ -11,6 +11,7 @@
     "shell:config": "node --env-file-if-exists=.env.local scripts/shell-config.mjs",
     "android:build": "npm run shell:config && cd android && ./gradlew assembleRelease",
     "tizen:build": "node --env-file-if-exists=.env.local scripts/package-tizen.mjs",
+    "tizen:probe": "node scripts/package-tizen.mjs --probe",
     "tizen:install": "sh scripts/tizen.sh install",
     "launcher:preview": "node launcher/scripts/serve.mjs",
     "launcher:build": "sh launcher/scripts/tizen.sh build",
