@@ -1,14 +1,19 @@
 {
   "name": "frame-dashboard",
   "version": "0.1.0",
-  "description": "A daily dashboard for the Samsung Frame (Tizen) and Android TV. Plan the week on Monday, see each day on the wall.",
+  "description": "A self-hosted, read-only household gallery display for Samsung The Frame.",
   "scripts": {
     "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
+    "start": "node --env-file-if-exists=.env.local scripts/server.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "cli": "node --env-file-if-exists=.env.local scripts/dashboard.mjs",
+    "brightness:observe": "node --env-file-if-exists=.env.local scripts/brightness.mjs",
+    "worker": "node --env-file-if-exists=.env.local scripts/worker.mjs",
     "test": "node --test test/*.test.js",
-    "plan:push": "node --env-file-if-exists=.env.local scripts/push-plan.mjs",
     "shell:config": "node --env-file-if-exists=.env.local scripts/shell-config.mjs",
     "android:build": "npm run shell:config && cd android && ./gradlew assembleRelease",
-    "tizen:build": "npm run shell:config && sh scripts/tizen.sh build",
+    "tizen:build": "node --env-file-if-exists=.env.local scripts/package-tizen.mjs",
+    "tizen:probe": "node scripts/package-tizen.mjs --probe",
     "tizen:install": "sh scripts/tizen.sh install",
     "launcher:preview": "node launcher/scripts/serve.mjs",
     "launcher:build": "sh launcher/scripts/tizen.sh build",
@@ -16,11 +21,14 @@
   },
   "license": "MIT",
   "dependencies": {
-    "ical-expander": "^3.2.0"
+    "@js-temporal/polyfill": "^0.5.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "openid-client": "^6.8.1",
+    "zod": "^4.1.12"
   },
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   }
 }

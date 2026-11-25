@@ -1,0 +1,14 @@
+{
+  "layout": "bleed",
+  "packs": ["impressionists"],
+  "eveningTransition": "19:00",
+  "maxVisibleTasks": 5,
+  "showCompletedRecap": false,
+  "showRevisits": false,
+  "showOwners": false,
+  "ownerIds": [],
+  "projectIds": [],
+  "tagIds": [],
+  "artworkCacheMB": 256,
+  "brightness": { "enabled": false }
+}

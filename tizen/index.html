@@ -14,12 +14,13 @@
     </style>
     <!-- Samsung's TV API, injected by the platform at install time. -->
     <script src="$WEBAPIS/webapis/webapis.js"></script>
-    <!-- Written by `npm run tizen:config` from DASHBOARD_URL. Gitignored. -->
+    <!-- Written into the private widget by npm run tizen:build. -->
     <script src="dashboard-url.js"></script>
   </head>
   <body>
     <div id="msg"></div>
     <iframe id="screen" allow="autoplay" hidden></iframe>
+    <script src="lease.js"></script>
     <script src="main.js"></script>
   </body>
 </html>

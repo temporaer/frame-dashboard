@@ -4,22 +4,41 @@
  * Plain ES2019 in one classic script: it has to run in a 2022 Samsung Frame
  * (Tizen 6.5, about Chromium 85) and old Android TV WebViews, with no build.
  *
- * Query params: k (read key, remembered), lang (en|es), mode (day|night|auto),
+ * A scoped display token is provisioned in the URL fragment, never a query.
+ * Query params: lang (de|en|es), mode (day|night|auto),
  * layout (bleed|salon|painting), date (YYYY-MM-DD, preview another week),
  * at (HH:MM, pretend it's this time).
  */
 (function () {
   'use strict';
 
-  var REFRESH_MS = 5 * 60 * 1000; // full rebuild: picks up calendar-feed changes
-  var VERSION_MS = 20 * 1000; // cheap "did anything change?" check
+  var REFRESH_MS = 60 * 1000;
+  var VERSION_MS = 60 * 1000;
   var BROWSE_RESET_MS = 45 * 1000;
   var MAX_EVENTS = 4;
-  var MAX_TASKS = 14; // the layout trims to what actually fits, see fitTasks()
+  var MAX_TASKS = 5;
   var EVENING_FROM = 19; // the wall goes dark and the right side turns to tomorrow
   var NIGHT_UNTIL = 6; // after midnight it stays dark, but shows the new day
 
   var STRINGS = {
+    de: {
+      todaysFocus: 'Heute', tomorrowsFocus: 'Morgen', focusFor: 'Überblick',
+      schedule: 'Termine', tomorrow: 'Morgen', tasks: 'Vorhaben',
+      tasksTomorrow: 'Vorhaben für morgen',
+      meetings: ['Keine Termine', '1 Termin', '{n} Termine'],
+      doneOf: '{d} von {n} erledigt',
+      planned: ['Keine Vorhaben', '1 Vorhaben', '{n} Vorhaben'],
+      now: 'Jetzt', minLeft: 'noch {m} Min.', inMin: 'in {m} Min.',
+      fromToday: 'Heute noch offen', noMeetings: 'Keine Termine',
+      doneForDay: 'Heute keine weiteren Termine', noTasks: 'Keine Vorhaben',
+      noFocus: '', earlier: '{n} vorbei', more: '+{n} weitere',
+      wrapped: 'Heute erledigt', updated: 'Stand {t}',
+      offline: 'Offline · letzter Stand {t}',
+      keyTitle: 'Anmeldung erforderlich',
+      keyBody: 'Für diese Anzeige einen Leseschlüssel im Browser oder am TV einrichten.',
+      badKeyTitle: 'Zugriff nicht möglich',
+      badKeyBody: 'Der Leseschlüssel ist ungültig oder wurde widerrufen.',
+    },
     en: {
       todaysFocus: "Today's focus",
       tomorrowsFocus: "Tomorrow's focus",
@@ -34,20 +53,20 @@
       now: 'Now',
       minLeft: '{m} min left',
       inMin: 'in {m} min',
-      fromToday: 'From today',
+      fromToday: 'Still open today',
       noMeetings: 'No meetings',
       doneForDay: 'No more meetings today',
       noTasks: 'Nothing planned',
-      noFocus: 'No plan yet — plan the week with Claude',
+      noFocus: '',
       earlier: '{n} earlier',
       more: '+{n} more',
       wrapped: 'Today, wrapped',
       updated: 'Updated {t}',
       offline: 'Offline · showing {t}',
       keyTitle: 'Almost there',
-      keyBody: 'Open this page with ?k=your-read-key, or set the URL in the TV app.',
+      keyBody: 'Provision a display token in this browser or on the TV.',
       badKeyTitle: 'Key not accepted',
-      badKeyBody: 'The read key in the URL does not match DASHBOARD_READ_KEY on the server.',
+      badKeyBody: 'The display token is invalid or has been revoked.',
     },
     es: {
       todaysFocus: 'Enfoque de hoy',
@@ -63,26 +82,37 @@
       now: 'Ahora',
       minLeft: 'quedan {m} min',
       inMin: 'en {m} min',
-      fromToday: 'De hoy',
+      fromToday: 'Pendiente de hoy',
       noMeetings: 'Sin juntas',
       doneForDay: 'No hay más juntas hoy',
       noTasks: 'Nada planeado',
-      noFocus: 'Sin plan todavía — planea la semana con Claude',
+      noFocus: '',
       earlier: '{n} antes',
       more: '+{n} más',
       wrapped: 'El día, en resumen',
       updated: 'Actualizado {t}',
       offline: 'Sin conexión · mostrando {t}',
       keyTitle: 'Ya casi',
-      keyBody: 'Abre esta página con ?k=tu-clave-de-lectura, o configura la URL en la app de la TV.',
+      keyBody: 'Configura un token de pantalla en este navegador o en la TV.',
       badKeyTitle: 'Clave no aceptada',
-      badKeyBody: 'La clave de la URL no coincide con DASHBOARD_READ_KEY en el servidor.',
+      badKeyBody: 'El token de pantalla no es válido o fue revocado.',
     },
   };
 
   var params = new URLSearchParams(location.search);
+  var rendered = !!window.__FRAME_RENDER;
+  var supplied = window.__FRAME_SNAPSHOT;
+  var fragment = new URLSearchParams(location.hash.slice(1));
+  if (fragment.get('token')) {
+    try {
+      if (localStorage.getItem('fd:key') !== fragment.get('token')) localStorage.removeItem('fd:week');
+      localStorage.setItem('fd:key', fragment.get('token'));
+    } catch (e) { /* device storage unavailable */ }
+    window.__FRAME_TOKEN = fragment.get('token');
+    history.replaceState(null, '', location.pathname + location.search);
+  }
   var state = {
-    data: null,
+    data: supplied ? supplied.projection : null,
     offline: false,
     selected: null, // ymd being browsed with the remote, or null
     browseTimer: null,
@@ -108,18 +138,28 @@
   }
 
   function readKey() {
-    var k = params.get('k');
-    if (k) store('fd:key', k);
-    return k || store('fd:key');
+    return window.__FRAME_TOKEN || store('fd:key');
+  }
+
+  function authOptions() {
+    var key = readKey();
+    return { cache: 'no-store', credentials: 'same-origin', headers: key ? { Authorization: 'Bearer ' + key } : {} };
+  }
+
+  function clearPrivateCache() {
+    state.data = null;
+    window.__FRAME_TOKEN = null;
+    try { localStorage.removeItem('fd:key'); localStorage.removeItem('fd:week'); } catch (e) { /* storage unavailable */ }
+    document.getElementById('stage').hidden = true;
   }
 
   function lang() {
-    var l = (params.get('lang') || (state.data && state.data.locale) || 'en').slice(0, 2).toLowerCase();
+    var l = (params.get('lang') || (state.data && state.data.locale) || 'de').slice(0, 2).toLowerCase();
     return STRINGS[l] ? l : 'en';
   }
 
   function intlLocale() {
-    return lang() === 'es' ? 'es-MX' : 'en-US';
+    return lang() === 'de' ? 'de-DE' : lang() === 'es' ? 'es-MX' : 'en-US';
   }
 
   function t(key, vars) {
@@ -157,6 +197,7 @@
 
   // ?at=HH:MM fakes the time of day, for previewing the evening view.
   function now() {
+    if (rendered && state.data) return new Date(state.data.generatedAt);
     var base = new Date(Date.now() + state.skew);
     var at = params.get('at');
     if (!at || !state.data) return base;
@@ -229,6 +270,7 @@
   function isNight() {
     var mode = params.get('mode') || 'auto';
     if (mode !== 'auto') return mode === 'night';
+    if (state.data && state.data.phase && !params.get('at')) return state.data.phase.night;
     var h = localParts(now()).hour;
     return h >= EVENING_FROM || h < NIGHT_UNTIL;
   }
@@ -239,7 +281,10 @@
     var mode = params.get('mode');
     if (mode === 'night') return true;
     if (mode === 'day') return false;
-    return localParts(now()).hour >= EVENING_FROM;
+    if (state.data && state.data.phase && !params.get('at')) return state.data.phase.evening;
+    var p = localParts(now());
+    var transition = state.data && state.data.preferences ? state.data.preferences.eveningTransition : '19:00';
+    return p.hour * 60 + p.minute >= Number(transition.slice(0, 2)) * 60 + Number(transition.slice(3));
   }
 
   // The design (Settings → layout): "bleed" is full bleed by day and the
@@ -346,7 +391,7 @@
         .join(' · ');
       var factEl = $('credit-fact');
       clear(factEl);
-      if (art.fact) {
+      if (art.fact && lang() !== 'de') {
         factEl.appendChild(document.createTextNode(art.fact));
         factEl.appendChild(el('span', 'via', 'Wikipedia'));
       }
@@ -357,6 +402,9 @@
           $('label').classList.add('is-in');
           bleed.classList.add('is-in');
           fill.classList.add('is-in');
+          window.__FRAME_ART = art.image;
+          window.__FRAME_READY = true;
+          document.documentElement.setAttribute('data-frame-ready', 'true');
         });
       });
     };
@@ -366,6 +414,9 @@
       if (art.fallback && state.artShown === art.image) {
         state.artShown = null;
         hangArt(art.fallback);
+      } else {
+        window.__FRAME_ERROR = 'artwork_unavailable';
+        document.documentElement.setAttribute('data-frame-error', 'true');
       }
     };
     img.src = art.image;
@@ -374,6 +425,7 @@
   // ── Rendering ────────────────────────────────────────────────────────
 
   function renderClock() {
+    if (rendered) return;
     var p = timeParts(now());
     $('clock-time').textContent = p.main;
     $('clock-period').textContent = p.period;
@@ -391,15 +443,17 @@
     clear(allday);
     clear(list);
 
-    day.events.forEach(function (e) {
-      if (e.allDay) allday.appendChild(el('li', null, e.title));
+    var allDayEvents = day.events.filter(function (e) { return e.allDay; });
+    allDayEvents.slice(0, 2).forEach(function (e) {
+      allday.appendChild(el('li', null, e.title));
     });
+    if (allDayEvents.length > 2) allday.appendChild(el('li', 'more', t('more', { n: allDayEvents.length - 2 })));
 
     var timed = timedEvents(day);
-    $('schedule-count').textContent = plural('meetings', timed.length);
+    $('schedule-count').textContent = plural('meetings', day.events.length);
     if (!timed.length) {
-      list.appendChild(el('li', 'empty-line', t('noMeetings')));
-      return;
+      if (!allDayEvents.length) list.appendChild(el('li', 'empty-line', t('noMeetings')));
+      return { list: list, total: 0, allDay: { list: allday, total: allDayEvents.length } };
     }
 
     var t0 = now().getTime();
@@ -435,13 +489,13 @@
       if (inProgress) cls.push('now');
 
       var li = el('li', cls.join(' '));
-      li.appendChild(el('span', 'time', shortTime(e.start)));
+      li.appendChild(el('span', 'time', e.continuesBefore ? '…' : shortTime(e.start)));
       var what = el('div', 'what');
       what.appendChild(el('div', 'title', e.title));
       if (e === lead && e.location) what.appendChild(el('div', 'where', e.location.split('\n')[0]));
       li.appendChild(what);
 
-      if (e === lead) {
+      if (e === lead && !rendered) {
         var tail = inProgress
           ? t('minLeft', { m: Math.max(1, Math.round((en - t0) / 60000)) })
           : s - t0 < 90 * 60000
@@ -452,6 +506,7 @@
       list.appendChild(li);
     });
     if (overflow) list.appendChild(el('li', 'more', t('more', { n: overflow })));
+    return { list: list, total: shown.length, allDay: { list: allday, total: allDayEvents.length } };
   }
 
   // Plans written by hand may list tasks as plain strings.
@@ -466,16 +521,18 @@
   }
 
   function renderTasks(day, carried, evening) {
-    var list = $('tasks');
-    clear(list);
+    var ownList = $('tasks');
+    var carriedList = $('carried');
+    clear(ownList);
+    clear(carriedList);
 
     var own = tasksOf(day);
     var known = {};
     own.forEach(function (x) {
-      known[x.text.toLowerCase()] = true;
+      known[x.id || x.text] = true;
     });
     var extra = (carried || []).filter(function (x) {
-      return !known[x.text.toLowerCase()];
+      return !known[x.id || x.text];
     });
 
     var open = own.filter(function (x) {
@@ -499,26 +556,24 @@
         })
       );
 
-    $('tasks-count').textContent = evening
-      ? plural('planned', open.length + extra.length)
-      : own.length
-      ? t('doneOf', { d: done.length, n: own.length })
-      : '';
+    ownList.parentNode.hidden = !own.length;
+    $('carried-block').hidden = !extra.length;
+    $('tasks-count').textContent = done.length && !evening
+      ? t('doneOf', { d: done.length, n: own.length }) : plural('planned', own.length);
+    $('carried-label').textContent = t('fromToday');
+    $('carried-count').textContent = plural('planned', extra.length);
 
-    if (!all.length) {
-      list.appendChild(el('li', 'empty-line', t('noTasks')));
-      return;
-    }
-
-    all.slice(0, MAX_TASKS).forEach(function (item) {
-      var li = el('li', item.task.done ? 'done' : '');
+    var limit = state.data && state.data.preferences ? state.data.preferences.maxVisibleTasks : MAX_TASKS;
+    all.slice(0, limit).forEach(function (item) {
+      var li = el('li', (item.task.done ? 'done' : '') + (item.task.attention ? ' attention' : ''));
       li.appendChild(el('span', 'tick'));
-      li.appendChild(el('span', 'task-text', item.task.text));
-      if (item.carried) li.appendChild(el('span', 'tag carried', t('fromToday')));
-      else if (item.task.tag) li.appendChild(el('span', 'tag', item.task.tag));
-      list.appendChild(li);
+      var copy = el('div', 'task-copy');
+      copy.appendChild(el('span', 'task-text', item.task.text));
+      if (item.task.tag) copy.appendChild(el('span', 'tag', item.task.tag));
+      li.appendChild(copy);
+      (item.carried ? carriedList : ownList).appendChild(li);
     });
-    fitTasks(list, all.length);
+    return [{ list: ownList, total: own.length }, { list: carriedList, total: extra.length }];
   }
 
   var MEDIUMS_ES = {
@@ -531,31 +586,52 @@
     'transparent watercolor': 'Acuarela',
   };
 
+  var MEDIUMS_DE = {
+    'oil on canvas': 'Öl auf Leinwand',
+    'oil on linen canvas': 'Öl auf Leinen',
+    'oil on jute canvas': 'Öl auf Jute',
+    'oil on panel': 'Öl auf Holz',
+    'color woodblock print': 'Farbholzschnitt',
+    watercolor: 'Aquarell',
+    'transparent watercolor': 'Aquarell',
+  };
+
   function medium(m) {
-    if (!m || lang() !== 'es') return m;
-    return MEDIUMS_ES[m.toLowerCase()] || m;
+    var translations = lang() === 'de' ? MEDIUMS_DE : lang() === 'es' ? MEDIUMS_ES : null;
+    return m && translations ? translations[m.toLowerCase()] || m : m;
   }
 
-  // Show as many to-dos as the column has room for: drop rows from the end
-  // (finished ones sink there first) until nothing overflows, and say how
-  // many are hidden. Uses layout sizes, which the stage's scale() ignores.
-  function fitTasks(list, total) {
+  function fitTasks(groups, events) {
     var day = $('day');
     var fits = function () {
       return day.scrollHeight <= day.clientHeight + 1;
     };
-    if (fits()) return;
-    var more = el('li', 'more');
-    list.appendChild(more);
-    var rows = list.querySelectorAll('li:not(.more)');
-    for (var i = rows.length - 1; i >= 1; i--) {
-      list.removeChild(rows[i]);
-      more.textContent = t('more', { n: total - i });
-      if (fits()) return;
+    function overflow(group) {
+      var count = group.list.querySelectorAll('li:not(.more)').length;
+      var more = group.list.querySelector('.more');
+      if (group.total > count) {
+        if (!more) group.list.appendChild(more = el('li', 'more'));
+        more.textContent = t('more', { n: group.total - count });
+      } else if (more) {
+        group.list.removeChild(more);
+      }
     }
+    groups.forEach(overflow);
+    // Keep at least one visible item in each group; never let a busy calendar
+    // erase task context. Each group retains its own honest overflow count.
+    groups.slice().reverse().concat([events, events.allDay]).forEach(function (group) {
+      var rows = group.list.querySelectorAll('li:not(.more)');
+      while (!fits() && rows.length > 1) {
+        group.list.removeChild(rows[rows.length - 1]);
+        overflow(group);
+        rows = group.list.querySelectorAll('li:not(.more)');
+      }
+    });
+    if (!fits()) document.body.classList.add('dense');
   }
 
   var WORDS = {
+    de: ['Keine', 'Ein', 'Zwei', 'Drei', 'Vier', 'Fünf', 'Sechs', 'Sieben', 'Acht', 'Neun', 'Zehn'],
     en: ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'],
     es: ['Ninguna', 'Una', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve', 'Diez'],
   };
@@ -574,18 +650,19 @@
     }).length;
     var c = carried.length;
     var out = [];
+    if (lang() === 'de') return done === 1 ? 'Ein Vorhaben erledigt.' : done + ' Vorhaben erledigt.';
     if (lang() === 'es') {
       out.push(
         (m === 1 ? 'Una junta' : m === 0 ? 'Sin juntas' : word(m) + ' juntas') +
           (total ? ', ' + word(done, true) + ' de ' + word(total, true) + ' hechas.' : '.')
       );
-      if (c) out.push(c === 1 ? 'Una pasa a mañana.' : word(c) + ' pasan a mañana.');
+      if (c) out.push(c === 1 ? 'Una sigue pendiente.' : word(c) + ' siguen pendientes.');
     } else {
       out.push(
         (m === 1 ? 'One meeting' : word(m) + ' meetings') +
           (total ? ', ' + word(done, true) + ' of ' + word(total, true) + ' done.' : '.')
       );
-      if (c) out.push(word(c) + (c === 1 ? ' moves' : ' move') + ' to tomorrow.');
+      if (c) out.push(word(c) + (c === 1 ? ' remains' : ' remain') + ' unfinished.');
     }
     return out.join(' ');
   }
@@ -600,7 +677,7 @@
       if (dow === 0 || dow === 6) cls.push('is-weekend');
       if (d.date < today) cls.push('is-past');
       if (d.date === today) cls.push('is-today');
-      else if (d.date === shownDate) cls.push('is-selected');
+      else if (!rendered && d.date === shownDate) cls.push('is-selected');
       var li = el('li', cls.join(' '));
       li.appendChild(el('div', 'wk-day', fmtDay(d.date, { weekday: 'short' }).replace('.', '').toUpperCase()));
       li.appendChild(el('div', 'wk-num', String(Number(d.date.slice(8)))));
@@ -615,7 +692,7 @@
   function renderStatus() {
     var d = state.data;
     var stamp = shortTime(d.generatedAt);
-    var msg = state.offline ? t('offline', { t: stamp }) : t('updated', { t: stamp });
+    var msg = rendered ? '' : state.offline ? t('offline', { t: stamp }) : t('updated', { t: stamp });
     if (d.errors && d.errors.length && !state.offline) msg = d.errors[0] + ' · ' + msg;
     $('status').textContent = msg;
   }
@@ -625,6 +702,8 @@
     try {
       draw();
     } catch (err) {
+      window.__FRAME_ERROR = 'render_failed';
+      document.documentElement.setAttribute('data-frame-error', 'true');
       if (window.console) console.error(err);
     }
   }
@@ -661,10 +740,16 @@
     var live = !state.selected && !evening; // "now", countdowns, past fading
 
     var art = (state.selected ? day : today).art;
+    var carriedOpen = evening && today ? tasksOf(today).filter(function (x) { return !x.done; }) : [];
+    var quiet = !day.events.length && !tasksOf(day).length && !carriedOpen.length;
     document.body.className =
-      (night ? 'night' : '') + (useBleed(art, night) ? ' bleed' : '') + (state.selected ? ' browsing' : '');
+      (night ? 'night' : '') + (useBleed(art, night) ? ' bleed' : '') + (state.selected ? ' browsing' : '') +
+      (quiet ? ' quiet' : '') + (rendered ? ' rendered' : '');
+    document.querySelector('.focus').hidden = !day.focus;
+    $('events').parentNode.hidden = !day.events.length;
+    $('tasks').parentNode.hidden = !tasksOf(day).length && !carriedOpen.length;
 
-    $('eyebrow').textContent = fmtDay(state.selected || todayYmd, {
+    $('eyebrow').textContent = (evening ? t('tomorrow') + ' · ' : '') + fmtDay(day.date, {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
@@ -679,7 +764,7 @@
     focus.className = 'focus-text' + (day.focus ? '' : ' empty');
     focus.textContent = day.focus || (state.data.planned ? '' : t('noFocus'));
 
-    $('schedule-label').textContent = evening ? t('tomorrow') : t('schedule');
+    $('schedule-label').textContent = t('schedule');
     $('tasks-label').textContent = evening ? t('tasksTomorrow') : t('tasks');
 
     var carried =
@@ -689,22 +774,24 @@
           })
         : [];
 
-    renderEvents(day, live);
-    renderTasks(day, carried, evening);
+    var eventGroup = renderEvents(day, live);
+    var taskGroups = renderTasks(day, carried, evening);
 
     var recap = $('recap');
-    recap.hidden = !(evening && today);
-    if (evening && today) {
+    var showRecap = evening && today && state.data.preferences && state.data.preferences.showCompletedRecap;
+    recap.hidden = !showRecap;
+    if (showRecap) {
       $('recap-label').textContent = t('wrapped');
       $('recap-text').textContent = recapText(today, carried);
     }
-
     renderWeek(day.date);
+    fitTasks(taskGroups, eventGroup);
     renderStatus();
     // The painting belongs to the calendar day, not to the view: tonight's
     // painting is still today's.
     hangArt(art);
     document.documentElement.lang = lang();
+    if (window.parent !== window) window.parent.postMessage({ type: 'frame-dashboard:ready' }, '*');
   }
 
   // ── Data ─────────────────────────────────────────────────────────────
@@ -717,15 +804,15 @@
 
   function load() {
     state.lastLoad = Date.now();
-    var key = readKey();
     var q = new URLSearchParams();
-    if (key) q.set('k', key);
     if (params.get('date')) q.set('date', params.get('date'));
 
-    return fetch('api/week?' + q.toString(), { cache: 'no-store' })
+    return fetch('/api/week?' + q.toString(), authOptions())
       .then(function (res) {
-        if (res.status === 401) {
-          notice(key ? 'badKeyTitle' : 'keyTitle', key ? 'badKeyBody' : 'keyBody');
+        if (res.status === 401 || res.status === 403) {
+          var hadKey = !!readKey();
+          clearPrivateCache();
+          notice(hadKey ? 'badKeyTitle' : 'keyTitle', hadKey ? 'badKeyBody' : 'keyBody');
           throw new Error('unauthorized');
         }
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -736,9 +823,14 @@
         state.skew = Date.parse(data.generatedAt) - Date.now();
         if (Math.abs(state.skew) < 60 * 1000) state.skew = 0;
         state.data = data;
+        $('stage').hidden = false;
         state.offline = false;
         store('fd:week', JSON.stringify(data));
         render();
+        if (document.fonts) {
+          document.fonts.ready.then(render);
+          document.fonts.addEventListener('loadingdone', render);
+        }
       })
       .catch(function (err) {
         if (err.message === 'unauthorized') return;
@@ -750,9 +842,9 @@
   // Edits from the Mac app or Claude bump a version on the server. Poll it
   // often (one tiny request) and reload the week only when it moves.
   function checkVersion() {
-    var key = readKey();
-    fetch('api/version' + (key ? '?k=' + encodeURIComponent(key) : ''), { cache: 'no-store' })
+    fetch('/api/version', authOptions())
       .then(function (res) {
+        if (res.status === 401 || res.status === 403) { clearPrivateCache(); notice('keyTitle', 'keyBody'); }
         return res.ok ? res.json() : null;
       })
       .then(function (body) {
@@ -834,11 +926,12 @@
   window.addEventListener('resize', fit);
   fit();
   try {
-    state.data = JSON.parse(store('fd:week') || 'null');
+    if (!supplied) state.data = JSON.parse(store('fd:week') || 'null');
   } catch (e) {
     state.data = null;
   }
   render();
+  if (rendered) return;
   load();
   setInterval(load, REFRESH_MS);
   checkVersion();

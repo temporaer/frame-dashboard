@@ -2,9 +2,17 @@
 (function () {
   'use strict';
 
-  var RELOAD_MS = 6 * 60 * 60 * 1000; // pick up new deploys a few times a day
   var frame = document.getElementById('screen');
   var msg = document.getElementById('msg');
+  var ready = false;
+  var retry;
+  var backoff = 5000;
+  var pageVisible = true;
+  var lease = window.createForegroundReporter(window.BRIGHTNESS_TELEMETRY);
+
+  function reportForeground() {
+    lease.setForeground(ready && pageVisible && !document.hidden && navigator.onLine !== false);
+  }
 
   function screensaverOff() {
     try {
@@ -14,10 +22,8 @@
     }
   }
 
-  // The home-screen launcher in launcher/ (launcher/src/config.xml).
-  var LAUNCHER_ID = 'FrmLnchr01.Launcher';
-
   function exitApp() {
+    lease.stop();
     try {
       tizen.application.getCurrentApplication().exit();
     } catch (e) {
@@ -25,24 +31,23 @@
     }
   }
 
-  // Back opens the launcher, then closes this app. Without the launcher
-  // installed it just closes, as before.
-  function backToLauncher() {
-    try {
-      tizen.application.launch(LAUNCHER_ID, exitApp, exitApp);
-    } catch (e) {
-      exitApp();
-    }
-  }
-
   function show() {
     if (!window.DASHBOARD_URL) {
-      msg.textContent = 'Missing DASHBOARD_URL. Run "npm run tizen:config" and rebuild the app.';
+      msg.textContent = 'Dashboard-Adresse fehlt. Paket mit DASHBOARD_URL neu erstellen.';
       return;
     }
     msg.textContent = '';
+    ready = false;
+    reportForeground();
     frame.hidden = false;
     frame.src = window.DASHBOARD_URL;
+    clearTimeout(retry);
+    retry = setTimeout(function () {
+      if (!ready && !document.hidden) {
+        backoff = Math.min(backoff * 2, 300000);
+        show();
+      }
+    }, backoff);
   }
 
   // Remote keys go to whichever document has focus; give it to the dashboard
@@ -52,29 +57,42 @@
   });
 
   document.addEventListener('keydown', function (e) {
-    if (e.keyCode === 10009) backToLauncher(); // Back / Return
+    if (e.keyCode === 10009) exitApp(); // Back / Return
   });
 
   // Once the dashboard has focus its keys stay inside the iframe, so the
   // page reports Back itself (public/app.js).
   window.addEventListener('message', function (e) {
-    if (e.source === frame.contentWindow && e.data && e.data.type === 'frame-dashboard:back') {
-      backToLauncher();
+    if (e.source !== frame.contentWindow || !e.data || e.origin !== new URL(window.DASHBOARD_URL).origin) return;
+    if (e.data.type === 'frame-dashboard:ready') {
+      ready = true;
+      reportForeground();
+      backoff = 5000;
+      clearTimeout(retry);
+    } else if (e.data.type === 'frame-dashboard:back') {
+      exitApp();
     }
   });
 
-  // Back from Art Mode or another input: screensaver off again, and reload
-  // the dashboard so it isn't showing whatever it had when it was paused.
+  // The hosted page refreshes its cached data when its visibility returns.
   document.addEventListener('visibilitychange', function () {
+    reportForeground();
     if (!document.hidden) {
       screensaverOff();
-      if (window.DASHBOARD_URL) frame.src = window.DASHBOARD_URL;
+      frame.focus();
+      if (!ready) show();
     }
   });
+  window.addEventListener('pagehide', function () { pageVisible = false; reportForeground(); });
+  window.addEventListener('pageshow', function () { pageVisible = true; reportForeground(); });
+  window.addEventListener('offline', reportForeground);
 
   screensaverOff();
   show();
-  setInterval(function () {
-    if (window.DASHBOARD_URL) frame.src = window.DASHBOARD_URL;
-  }, RELOAD_MS);
+  window.addEventListener('online', function () {
+    reportForeground();
+    clearTimeout(retry);
+    // Keep an already-loaded page: its local cache survives an API outage.
+    retry = setTimeout(function () { if (!ready) show(); }, 2000);
+  });
 })();

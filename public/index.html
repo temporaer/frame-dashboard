@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -29,9 +29,8 @@
         <div id="credit-meta" class="credit-meta"></div>
         <div id="credit-fact" class="credit-fact"></div>
       </div>
-      <div class="placard" aria-hidden="true"></div>
 
-      <section class="art" aria-label="Artwork of the day">
+      <section class="art" aria-label="Kunstwerk des Tages">
         <div id="glow" class="glow"></div>
         <div id="lamp" class="lamp"><i></i><b></b></div>
         <div id="frame" class="frame">
@@ -45,8 +44,7 @@
         <div id="label-meta" class="label-meta"></div>
       </div>
 
-      <ol id="week" class="week" aria-label="This week"></ol>
-
+      <div class="placard">
       <section id="day" class="day" aria-live="polite">
         <header>
           <p id="eyebrow" class="eyebrow"></p>
@@ -75,6 +73,14 @@
           <ul id="tasks" class="tasks"></ul>
         </div>
 
+        <div id="carried-block" class="block carried-block" hidden>
+          <div class="block-head">
+            <p id="carried-label" class="kicker"></p>
+            <p id="carried-count" class="count"></p>
+          </div>
+          <ul id="carried" class="tasks"></ul>
+        </div>
+
         <div class="spacer"></div>
 
         <div id="recap" class="recap" hidden>
@@ -83,6 +89,8 @@
         </div>
 
       </section>
+      <ol id="week" class="week" aria-label="Diese Woche"></ol>
+      </div>
 
       <p id="status" class="status"></p>
     </main>

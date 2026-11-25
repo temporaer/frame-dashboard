@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+    <title>Haushaltsgalerie Diagnose</title>
+    <link rel="stylesheet" href="probe.css" />
+    <script src="$WEBAPIS/webapis/webapis.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>Haushaltsgalerie: Nur-Lese-Diagnose</h1>
+      <p>Keine Netzwerkverbindung, Sensoraktivierung oder Änderung an TV-Einstellungen.</p>
+      <p>Sensor-Merkmale sind keine Messwerte. Vorhandene Methoden sind nicht aufrufgeprüft.
+        Sichtbarkeit ist kein Beweis für Vordergrundbesitz.</p>
+    </header>
+    <main>
+      <section>
+        <h2>Fähigkeiten <small>Auf / Ab: scrollen</small></h2>
+        <pre id="report" tabindex="0">Diagnose startet …</pre>
+      </section>
+      <section>
+        <h2>Lebenszyklus <small>Zurück: beenden</small></h2>
+        <pre id="events" aria-live="polite"></pre>
+      </section>
+    </main>
+    <footer>Kein Abschalten des Bildschirmschoners. Bericht und Ereignisse bleiben nur im Arbeitsspeicher
+      (FRAME_PROBE_REPORT / FRAME_PROBE_EVENTS im Web Inspector).</footer>
+    <script src="probe.js"></script>
+  </body>
+</html>
