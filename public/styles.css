@@ -71,6 +71,25 @@ ol {
   transform-origin: 0 0;
 }
 
+.rendered *, .rendered *::before, .rendered *::after {
+  transition: none !important;
+  animation: none !important;
+}
+.rendered .clock { display: none; }
+.quiet .day, .quiet.bleed .placard, .quiet.bleed .week, .quiet .week { display: none; }
+.quiet.bleed .bleed-art { left: 50% !important; transform: translateX(-50%); width: auto !important; max-width: 100%; object-fit: contain; }
+.quiet.bleed .scrim { opacity: 0; }
+.quiet .art { left: 390px; }
+.quiet .label { transform: translateX(390px); }
+.tasks .attention .tick { border-radius: 50%; opacity: 0.55; }
+.task-text, .events .title {
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Gradients can't transition, so day and night are two walls that crossfade. */
 .wall {
   position: absolute;
