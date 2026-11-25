@@ -5,9 +5,12 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: household-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   fixtures:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,7 +33,7 @@ jobs:
           name: synthetic-4k-layouts
           path: docs/screenshots/*.jpg
   containers:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: cp .env.example .env && cp config.example.json config.json

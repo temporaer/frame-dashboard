@@ -10,6 +10,7 @@ import { Runtime } from '../lib/runtime.js';
 import { artFor } from '../lib/art.js';
 import { createDashboard } from '../lib/server.js';
 import { Authentication } from '../lib/authentication.js';
+import { buildIdentity } from '../lib/build.js';
 
 const now = '2026-11-25T10:00:00Z';
 const zone = 'Europe/Berlin';
@@ -81,6 +82,21 @@ test('art rotation stays deterministic with local fallbacks for remote packs', (
   assert.deepEqual(artFor('2026-11-25'), artFor('2026-11-25'));
   const remote = Array.from({ length: 60 }, (_, i) => artFor(`2026-11-${String(i % 28 + 1).padStart(2, '0')}`)).find((a) => a.image.startsWith('art-cache/'));
   assert.ok(remote?.fallback.image.startsWith('art/'));
+});
+
+test('build identity invalidates cached renders after font or artwork changes at the same path', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'frame-build-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  await fs.mkdir(path.join(dir, 'fonts'));
+  await fs.writeFile(path.join(dir, 'fonts', 'face.woff2'), 'original font');
+  await fs.writeFile(path.join(dir, 'painting.jpg'), 'original image');
+  const original = await buildIdentity(dir);
+  assert.equal(await buildIdentity(dir), original);
+  await fs.writeFile(path.join(dir, 'fonts', 'face.woff2'), 'updated font');
+  const fontChanged = await buildIdentity(dir);
+  assert.notEqual(fontChanged, original);
+  await fs.writeFile(path.join(dir, 'painting.jpg'), 'updated image');
+  assert.notEqual(await buildIdentity(dir), fontChanged);
 });
 
 test('HTTP isolates capabilities, requires browser login and never serves old write routes', async (t) => {
