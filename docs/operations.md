@@ -7,13 +7,21 @@ only in ignored `.env.local` (native) or `.env` (Compose), mode `0600`.
 Never commit private hostnames, entity/member IDs, screenshots or projections.
 Demo mode ignores live sources and prohibits all TV operations.
 
-The backend listens on loopback by default. Terminate trusted HTTPS on a
-dedicated origin with a reverse proxy forwarding to port 4321. PocketID and the
-TV must trust its certificate and resolve its hostname on the household LAN.
-Split-horizon DNS is supported; configure the operator's real addresses locally.
-Do not disable TLS validation. Containers must resolve/reach those same
-services; configure the VM's DNS/CA trust if necessary.
+The backend speaks HTTP and listens on loopback by default. `AUTH_MODE=token`
+needs no PocketID, `PUBLIC_URL` or application certificate. Open
+`/display#token=<display-secret>` in the browser or TV; anonymous API access
+remains denied, and admin/worker capabilities stay separate. HTTP carries
+credentials and household data unencrypted: restrict it to loopback or an
+explicitly trusted private network, with no public port-forwarding. Use trusted
+HTTPS at a reverse proxy or a VPN when crossing untrusted networks.
 
+`AUTH_MODE=oidc` remains the compatibility default when no mode is set; shipped
+examples explicitly select `token`. Token mode disables all OIDC routes and
+ignores existing browser session cookies. It does not expose an unauthenticated
+fallback or make source credentials available to display clients.
+
+For optional browser login, select `AUTH_MODE=oidc` and terminate trusted HTTPS
+on a dedicated origin with a reverse proxy forwarding to port 4321.
 Register a separate PocketID confidential authorization-code client, callback
 `https://<dashboard-origin>/api/auth/callback`, issuer discovery and client-secret
 POST authentication. Authorize the household in PocketID and list exact `sub`
@@ -21,6 +29,11 @@ values in `OIDC_ALLOWED_SUBJECTS`. Sessions use 12-hour opaque Secure, HttpOnly,
 SameSite cookies; login flows use state, nonce and PKCE. No refresh token or
 identity-provider token is stored in the browser. POST `/api/auth/logout`
 invalidates the session; browser mutations require the exact dashboard Origin.
+
+Split-horizon DNS is supported; configure real addresses only in local private
+files. Containers must resolve/reach their configured source services and trust
+their certificates. Do not disable upstream TLS validation. Brightness telemetry
+still requires its own trusted HTTPS `PUBLIC_URL`, even in token mode.
 
 The display credential can read `/api/week` and `/api/version`, not render or
 administer. The worker credential can read `/api/render-snapshot` and `/render`,
@@ -73,6 +86,11 @@ today, tomorrow and source health, with no upstream credentials. Calendars are
 queried by range, not their single next-event state. Range boundaries use local
 days, including DST and Sunday's Monday preview. Machbar ordering remains
 canonical within overdue/deadline/planned/revisit/completed groups.
+With the direct MCP transport, tasks are intentionally limited to today's
+canonical commitments and overdue/due-today attention. Tomorrow/week task
+lists, revisit-only attention and recap are omitted; calendar views are
+unchanged. See [Machbar integration](machbar-integration.md) for credential
+scope, unknown availability and midnight/cache behavior.
 
 Admin examples assume credentials have been provisioned in the process
 environment (the CLI does not export `.env.local` into your shell):
@@ -102,6 +120,32 @@ sessions), `control` (activation requests), `artwork` (pairing, render candidate
 SQLite ownership journal). The worker has no Machbar/HA/OIDC credentials and no
 access to core sessions; its control volume is read-only.
 
+For the core-only Docker deployment, use `npm run deploy` from the checkout
+with Node 24 and `npm ci`. It reads the ignored `.env` and `config.json`,
+builds `DASHBOARD_IMAGE`, starts only `dashboard`, and waits for authenticated
+source readiness. It supports the Compose v2 plugin and legacy `docker-compose`.
+Core-only deployment refuses enabled native-Art operations or brightness
+observation; enable those only through their separately accepted runbooks.
+
+The helper records a random ownership identity under `data/deploy/` and labels
+only images it builds. After every successful deployment, it deletes every
+superseded owned image, keeping only the running image. It never uses global
+`prune`, forced image removal or volume deletion, and protects images referenced
+by any container, even stopped containers from another project. Such skips are
+reported explicitly. Unrelated image-tag/container collisions are rejected,
+not adopted or overwritten. Build/start/readiness failures do not prune images.
+Keep the ownership state to retain proof across restarts; losing it requires
+explicit operator reconciliation, not automatic adoption.
+
+Deployments serialize through `data/deploy/lock`; after a crashed deployment,
+confirm no deploy/build is still active before manually removing that empty
+stale lock directory. A normal failed/successful run releases its own lock.
+The helper replaces only its previously verified owned core container after a
+successful build, with a brief restart gap (also avoiding legacy Compose's
+incompatibility with recent Docker image metadata). It creates no scheduler
+or host-wide cleanup job. Use the helper for upgrades too: raw Docker/Compose
+build commands do not execute this retention policy.
+
 Stop both processes/services before backing up. Retain all state, configuration,
 secrets and the exact code/image revision together, encrypted and access-limited.
 For Compose, `docker compose stop` preserves volumes; snapshot the three named
@@ -112,7 +156,7 @@ belong to the journal backup too; a clean stop avoids inconsistent copies.
 
 Pin a tested Git revision (or image digest). After backup, update the checkout,
 restore dependencies from lockfiles, run the fixture suites, then restart.
-Compose: `docker compose up -d --build dashboard`, followed by the optional
+Core-only Compose: `npm run deploy`, followed by the optional
 `art` profile only if enabled/accepted. Native: `npm ci`, update the optional
 Conda/pip environment if manifests changed, then `npm start` and optionally
 `npm run worker -- run` under your process supervisor. Do not run two workers
@@ -124,6 +168,10 @@ its corresponding stopped-state backup**. A container downgrade alone is not
 a state-schema rollback. Never discard the ownership journal: without proof
 of ownership, the service must not delete existing TV images. Losing pairing
 state requires explicit re-pairing, not a guessed credential.
+
+The core deployment retention policy keeps no old image after success. Rolling
+back requires rebuilding the previous Git revision and restoring its matching
+configuration/state backup. Shared Docker build caches are not rollback images.
 
 ## Verification boundaries
 

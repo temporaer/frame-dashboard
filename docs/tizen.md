@@ -19,8 +19,10 @@ npm run tizen:build
 Output: `tizen/HouseholdFrame.unsigned.wgt`, reproducible ZIP with only widget
 config, shell, icon and generated dashboard URL. Its file mode is `0600`;
 **it contains the display credential**. Do not upload it as a public artifact.
-Access is restricted to that origin. Deploy trusted HTTPS, not a public HTTP
-listener. The package builder permits HTTP for isolated packaging tests only.
+Access is restricted to that origin. Prefer trusted HTTPS, never a public HTTP
+listener. The package builder also permits HTTP on an explicitly trusted
+private network, but the display token and household data then travel
+unencrypted. Optional telemetry still requires HTTPS.
 
 The iframe accepts a ready message only from its configured origin/window.
 Failed initial connections retry with capped exponential backoff; the frontend

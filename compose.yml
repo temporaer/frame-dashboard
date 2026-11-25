@@ -1,6 +1,7 @@
 services:
   dashboard:
     build: .
+    image: "${DASHBOARD_IMAGE:-frame-dashboard-core:local}"
     env_file: .env
     environment:
       HOST: 0.0.0.0

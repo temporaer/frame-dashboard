@@ -11,6 +11,7 @@ import { artFor } from '../lib/art.js';
 import { createDashboard } from '../lib/server.js';
 import { Authentication } from '../lib/authentication.js';
 import { buildIdentity } from '../lib/build.js';
+import { createHash } from 'node:crypto';
 
 const now = '2026-11-25T10:00:00Z';
 const zone = 'Europe/Berlin';
@@ -24,6 +25,23 @@ test('configuration fails closed and rejects conflicting or invalid preferences'
   await assert.rejects(demoConfig({ EVENING_TRANSITION: '25:01' }));
   await assert.rejects(demoConfig({ HA_CALENDAR_ENTITIES: 'sensor.secret' }));
   await assert.rejects(demoConfig({ TZ: 'Invalid/Zone' }));
+});
+
+test('explicit token mode needs no PocketID or public origin, but still requires scoped secrets', async () => {
+  const env = {
+    AUTH_MODE: 'token', MACHBAR_URL: 'https://tasks.example', MACHBAR_TOKEN: 'source',
+    HA_URL: 'https://calendar.example', HA_TOKEN: 'calendar-secret', HA_CALENDAR_ENTITIES: 'calendar.synthetic',
+    DISPLAY_TOKEN: 'd'.repeat(32), WORKER_TOKEN: 'w'.repeat(32), ADMIN_TOKEN: 'a'.repeat(32),
+  };
+  const config = await loadConfig(env);
+  assert.equal(config.authMode, 'token');
+  assert.equal(config.publicUrl, '');
+  assert.equal((await loadConfig({ ...env, PUBLIC_URL: 'http://frame.example' })).authMode, 'token');
+  for (const patch of [
+    { DISPLAY_TOKEN: '' }, { WORKER_TOKEN: env.DISPLAY_TOKEN },
+    { AUTH_MODE: 'anonymous' }, { AUTH_MODE: 'oidc' },
+    { PUBLIC_URL: 'http://frame.example/subpath' },
+  ]) await assert.rejects(loadConfig({ ...env, ...patch }));
 });
 
 test('projection excludes available/private work, preserves effective-owner narrowing and attention', async () => {
@@ -149,4 +167,44 @@ test('OIDC verifies nonce, state, PKCE and explicit subject authorization', asyn
   assert.equal(await auth.role({ headers: { cookie: headers['set-cookie'].split(';')[0] } }), 'human');
   assert.equal(auth.checkMutation({ headers: { origin: 'https://evil.example' } }, 'human'), false);
   await assert.rejects(auth.callback({ headers: { cookie: flow }, url: '/api/auth/callback' }, response));
+});
+
+test('token-only HTTP serves a safe shell, denies anonymous data and old sessions, and isolates capabilities', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'frame-token-auth-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const config = {
+    ...await demoConfig(), demo: false, authMode: 'token', dataDir: dir,
+    displayToken: 'display-secret', workerToken: 'worker-secret', adminToken: 'admin-secret', subjects: ['previous-household'],
+  };
+  const auth = new Authentication(config, { discovery: () => assert.fail('OIDC must not be contacted') });
+  const sessionId = 's'.repeat(43);
+  await fs.mkdir(path.join(dir, 'auth'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'auth', `${createHash('sha256').update(sessionId).digest('hex')}.session.json`), JSON.stringify({
+    subject: 'previous-household', expires: Date.now() + 60000,
+  }));
+  const cookie = `__Host-frame-session=${sessionId}`;
+  assert.equal(await auth.role({ headers: { cookie } }), null);
+  await assert.rejects(auth.configuration(), /oidc_disabled/);
+  const runtime = new Runtime({ ...config, demo: true }, { clock: () => now });
+  const app = await createDashboard(config, { runtime, auth });
+  await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
+  t.after(() => app.close());
+  const base = `http://127.0.0.1:${app.server.address().port}`;
+  const request = (route, secret, method = 'GET') => fetch(`${base}${route}`, { method, headers: secret ? { authorization: `Bearer ${secret}` } : {} });
+  assert.equal((await request('/')).status, 200);
+  assert.equal((await request('/api/week')).status, 401);
+  assert.equal((await fetch(`${base}/api/week`, { headers: { cookie } })).status, 401);
+  assert.equal((await request('/api/week', 'wrong-secret')).status, 401);
+  for (const route of ['/api/auth/login', '/api/auth/callback']) assert.equal((await request(route)).status, 404);
+  assert.equal((await request('/api/auth/logout', config.adminToken, 'POST')).status, 404);
+  const response = await request('/api/week', config.displayToken);
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  for (const value of [config.displayToken, config.workerToken, config.adminToken]) assert.ok(!body.includes(value));
+  assert.equal((await request('/api/refresh', config.displayToken, 'POST')).status, 403);
+  assert.equal((await request('/api/render-snapshot', config.displayToken)).status, 403);
+  assert.equal((await request('/api/week', config.workerToken)).status, 403);
+  assert.equal((await request('/api/render-snapshot', config.workerToken)).status, 200);
+  assert.equal((await request('/api/refresh', config.adminToken, 'POST')).status, 200);
+  assert.equal((await request('/api/art/activate', config.adminToken, 'POST')).status, 403);
 });

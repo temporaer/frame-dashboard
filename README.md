@@ -15,11 +15,13 @@ sources are not necessarily native 4K. Remote: left/right browse the week;
 OK returns to today; Back exits the Tizen shell.
 
 **Integration status:** the dashboard and fixture-backed adapters are
-implemented. Real Machbar access requires the separate
+implemented. Direct MCP supports **today's commitments and deadline attention
+only**, using a dedicated Household agent token. It omits future task views,
+revisit-only attention and completion recap; calendars retain their full range.
+The full-range REST adapter still requires the separate
 [read-only integration proposal, Machbar #383](https://github.com/temporaer/machbar/issues/383).
-Existing human-session REST, MCP and HA integration credentials are not
-substitutes. PocketID, real calendars, signing and physical TV behavior require
-operator configuration/acceptance; they have not been verified on hardware.
+PocketID is optional. Signing and physical TV behavior still require operator
+configuration/acceptance; the hosted shell has not been verified on hardware.
 
 ## Run locally with Conda
 
@@ -60,18 +62,23 @@ Set `DEMO_MODE=false` only after providing:
 
 | Settings | Purpose |
 | --- | --- |
-| `MACHBAR_URL`, `MACHBAR_TOKEN` | Deployed versioned display projection and dedicated read-only credential; see [contract](docs/machbar-integration.md) |
+| `MACHBAR_MCP_ENDPOINT`, `MACHBAR_TOKEN` | Full trusted HTTPS MCP endpoint and dedicated Household agent token; current-day tasks only |
+| `MACHBAR_URL`, `MACHBAR_TRANSPORT` | Alternative base URL with `mcp`, or `rest` (default without MCP endpoint) for the proposed full-range API; see [integration](docs/machbar-integration.md) |
 | `HA_URL`, `HA_TOKEN`, `HA_CALENDAR_ENTITIES` | Calendar range API; comma-separated entity IDs |
-| `PUBLIC_URL` | Dedicated trusted HTTPS dashboard origin, without a subpath |
-| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ALLOWED_SUBJECTS` | Separate PocketID confidential client and exact authorized subject IDs |
+| `AUTH_MODE` | Set `token` for browser/TV display-token access without PocketID; `oidc` enables browser login (compatibility default) |
+| `PUBLIC_URL` | Optional in token mode; required trusted HTTPS origin for OIDC or brightness telemetry |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ALLOWED_SUBJECTS` | Only for `AUTH_MODE=oidc`: separate PocketID client and exact authorized subject IDs |
 | `DISPLAY_TOKEN`, `WORKER_TOKEN`, `ADMIN_TOKEN` | Three distinct random secrets of at least 32 characters each; generate each with `openssl rand -hex 32` |
 
 Discover entities with `npm run cli -- calendars`; only `HA_URL` and `HA_TOKEN`
 are needed for discovery. Do not commit the resulting identifiers or output.
-Register the PocketID callback as `PUBLIC_URL/api/auth/callback`, authorize the
-household identities, and configure a trusted reverse proxy. Browser access
-requires PocketID; the TV opens `/display#token=DISPLAY_TOKEN` using only its
-revocable read-only credential. Provision that private URL, never publish it.
+With `AUTH_MODE=token`, open `/display#token=DISPLAY_TOKEN` in the browser or TV.
+The revocable display token permits reading only; admin and worker tokens remain
+separate. Provision that private URL, never publish it. No PocketID or app-side
+certificate is needed. HTTP exposes tokens/data in transit: keep it on loopback
+or an explicitly trusted private network; use HTTPS/VPN on untrusted networks.
+If opting into OIDC, register `PUBLIC_URL/api/auth/callback` and authorize the
+household identities. The backend still speaks HTTP behind the trusted proxy.
 
 Configuration fails closed. Production source failures retain last-good data
 with independent warnings; they never enable demo data. Only household
@@ -97,11 +104,20 @@ Docker is not needed for local development. For an existing Docker VM:
 ```sh
 cp .env.example .env
 cp config.example.json config.json
-# Configure .env, trusted HTTPS and PocketID before disabling demo mode.
-docker compose up -d --build dashboard
+# Configure sources and distinct tokens; AUTH_MODE=token needs no PocketID.
+# Configure trusted networking before disabling demo mode.
+npm ci
+npm run deploy
 # Only after native Art Mode acceptance and ART_MODE_ENABLED=true:
 docker compose --profile art up -d --build
 ```
+
+The deployment helper runs on the Docker host with Node 24, supporting Compose
+v2 or `docker-compose` v1. After each successful core build/start and authenticated
+source-readiness check, it removes this deployment's superseded images, keeping
+only the running image. Other deployments, images referenced by containers,
+volumes and shared build caches are never pruned. Failed deployments preserve
+old images; there is no retained rollback image after a successful deployment.
 
 The Node image is non-root and has no Python/Chromium. Only the optional `art`
 profile has the browser and TV library. Host publication defaults to loopback;

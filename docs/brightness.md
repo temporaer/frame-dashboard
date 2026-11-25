@@ -23,7 +23,9 @@ range 0..50, step 1. Different metadata is explicitly blocked.
 
 After separately approving live reads, set `enabled: true`. Supply `HA_URL`,
 `HA_TOKEN` and `DEMO_MODE=false`. The normal server still requires its usual
-production Machbar, PocketID and calendar configuration. Demo cannot enable
+production Machbar, authentication and calendar configuration (PocketID is
+optional with token mode). Brightness telemetry additionally requires a trusted
+HTTPS `PUBLIC_URL`. Demo cannot enable
 live observation, even if HA credentials happen to be present.
 
 For the normal server, generate a new `BRIGHTNESS_TELEMETRY_TOKEN` with

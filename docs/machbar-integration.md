@@ -1,8 +1,71 @@
-# Proposed Machbar read-only display integration
+# Machbar integration
+
+## Direct MCP: current-day commitments
+
+Set `MACHBAR_MCP_ENDPOINT` to the full trusted HTTPS MCP URL and provision a
+separately named **Household** agent token as `MACHBAR_TOKEN`. An explicit
+endpoint selects MCP transport unless `MACHBAR_TRANSPORT` is specified; a
+contradictory `rest` setting is rejected. Alternatively, select
+`MACHBAR_TRANSPORT=mcp` with a `MACHBAR_URL` base URL, resolving `api/mcp`.
+`MACHBAR_MCP_TOKEN`, when set, overrides `MACHBAR_TOKEN` for MCP only.
+Keep the credential only in the backend's ignored owner-readable
+environment file (mode `0600`), never in chat, frontend configuration or the
+Tizen package. Existing agent tokens are write-capable; accepting that credential
+is a temporary operator choice, not server-enforced read-only authorization.
+Revoke it separately when no longer needed. Do not copy HA's OAuth credentials.
+
+The official MCP client connects to `api/mcp` without an LLM. Outbound calls are
+restricted to protocol initialization and `machbar_today`, `machbar_get_task`,
+`machbar_get_project`. There is no arbitrary tool endpoint, mutation dispatcher,
+fallback to REST or automatic token creation. Redirects, subscriptions and
+other destinations are refused. Each response is limited to 2 MiB, individual
+requests to 15 seconds, the refresh to 30 seconds, and detail reads to 100.
+Excessive/malformed results fail explicitly; lists are never silently truncated.
+
+Only the canonical `overdue`, `dueToday` and `planned` task buckets are used,
+plus projects in the canonical overdue/due-today buckets. Shared/unscheduled
+backlog, future tasks, future project deadlines, next-action suggestions,
+revisit-only attention and completed recap are not displayed. Current working
+window selection remains Machbar's responsibility. Historical one-off schedules
+returned by older MCP servers are excluded rather than revived; the backend
+logs only an aggregate exclusion count. Canonical recurring plans are retained.
+The audited Today tool uses
+the default Europe/Berlin working-window timezone, so this transport currently
+requires that dashboard timezone. Optional revisit/recap settings are rejected
+in production MCP mode rather than silently ignored.
+
+Each selected item and all its ancestors are checked using detail reads:
+scope must be household and privacy ownership must explicitly be null.
+Private items/subtrees are omitted; work scope, missing ancestry/metadata,
+changed item revisions or failed detail calls fail the refresh closed.
+Only normalized display fields are retained; notes, ancestor titles, external
+references, member profiles and context details never enter the cache or public
+projection. Owner aliases are not supplied by these tools and remain absent.
+Existing owner/project/tag filters can only narrow the result.
+
+MCP does not expose combined working-window/context availability. The adapter
+retains an explicit unknown value and the display labels it
+**Verfügbarkeit ungeprüft**, never pretending that unknown means executable.
+Blocked/unexecutable tasks and deadlines retain their attention treatment.
+
+Task data covers only the fetched local day, including in the evening's
+separate "Heute noch offen" group. Tomorrow/week task lists remain empty by
+design; calendar browsing and tomorrow's appointments are unchanged.
+After midnight, yesterday's task snapshot is unavailable and hidden until a
+new current-day read succeeds. Same-day failures retain visibly stale last-good
+data. Switching transport or MCP token invalidates the source cache.
+Demo mode remains fixture-only even with MCP settings present.
+
+This adapter is source-reviewed against Machbar
+`74fc5f04e6fa47e258b39a311710b56b2b0e6529` and tested with synthetic MCP responses.
+Bounded live read calls also succeeded without displaying or persisting raw
+responses. Dashboard deployment and operator acceptance remain separate steps.
+
+## Proposed full-range REST display integration
 
 **This is a new API proposal, not an endpoint present in the audited Machbar
-deployment.** The dashboard intentionally fails visibly instead of using a
-human session cookie, write-capable MCP credential, unauthenticated route or
+deployment.** `MACHBAR_TRANSPORT=rest` intentionally fails visibly when it is
+absent. It never uses a human session cookie, an unauthenticated route or
 Machbar's SQLite database. Demo fixtures implement this contract.
 
 Implement and deploy this separately in `temporaer/machbar` before enabling

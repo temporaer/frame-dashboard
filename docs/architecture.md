@@ -11,10 +11,12 @@ It renders the same frontend from an immutable, authenticated projection and
 maintains its own durable image-ownership journal. The live service requires
 neither Chromium nor Python. Persistent state is a cache, not a source of truth.
 
-Normal browser access requires PocketID and explicit household subject
-authorization. A distinct TV token reads ambient information only. Internal
-renderer and administration credentials have separate capabilities. Tokens from
-upstream services never enter the frontend.
+Browser/TV access can use a revocable read-only display token without PocketID
+(`AUTH_MODE=token`). Optional PocketID browser login requires explicit household
+subject authorization (`AUTH_MODE=oidc`, compatibility default). Internal
+renderer and administration credentials retain separate capabilities. Token
+mode never accepts old human sessions or exposes anonymous household APIs.
+Upstream service tokens never enter the frontend.
 
 ## Audited upstream
 
@@ -30,6 +32,8 @@ Machbar `74fc5f04e6fa47e258b39a311710b56b2b0e6529`:
 `compiledViewProjection.ts` implement ownership, privacy and scheduling.
 REST agenda routes require human sessions. Existing MCP credentials can invoke
 mutation tools and are not suitable least-privilege display credentials.
+The current-day MCP adapter can temporarily use a dedicated writable Household
+token while enforcing fixed read calls and sanitizing the returned projection.
 See [the separate integration proposal](machbar-integration.md).
 
 ## Deliberate policy
