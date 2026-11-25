@@ -7,6 +7,12 @@
   var ready = false;
   var retry;
   var backoff = 5000;
+  var pageVisible = true;
+  var lease = window.createForegroundReporter(window.BRIGHTNESS_TELEMETRY);
+
+  function reportForeground() {
+    lease.setForeground(ready && pageVisible && !document.hidden && navigator.onLine !== false);
+  }
 
   function screensaverOff() {
     try {
@@ -17,6 +23,7 @@
   }
 
   function exitApp() {
+    lease.stop();
     try {
       tizen.application.getCurrentApplication().exit();
     } catch (e) {
@@ -31,6 +38,7 @@
     }
     msg.textContent = '';
     ready = false;
+    reportForeground();
     frame.hidden = false;
     frame.src = window.DASHBOARD_URL;
     clearTimeout(retry);
@@ -58,6 +66,7 @@
     if (e.source !== frame.contentWindow || !e.data || e.origin !== new URL(window.DASHBOARD_URL).origin) return;
     if (e.data.type === 'frame-dashboard:ready') {
       ready = true;
+      reportForeground();
       backoff = 5000;
       clearTimeout(retry);
     } else if (e.data.type === 'frame-dashboard:back') {
@@ -67,16 +76,21 @@
 
   // The hosted page refreshes its cached data when its visibility returns.
   document.addEventListener('visibilitychange', function () {
+    reportForeground();
     if (!document.hidden) {
       screensaverOff();
       frame.focus();
       if (!ready) show();
     }
   });
+  window.addEventListener('pagehide', function () { pageVisible = false; reportForeground(); });
+  window.addEventListener('pageshow', function () { pageVisible = true; reportForeground(); });
+  window.addEventListener('offline', reportForeground);
 
   screensaverOff();
   show();
   window.addEventListener('online', function () {
+    reportForeground();
     clearTimeout(retry);
     // Keep an already-loaded page: its local cache survives an API outage.
     retry = setTimeout(function () { if (!ready) show(); }, 2000);

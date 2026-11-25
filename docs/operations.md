@@ -45,6 +45,13 @@ override their JSON values. `TZ` defaults to `Europe/Berlin`; legacy
 `de-DE`. Owner/project/tag filters only narrow authorized household data.
 Pack names come from `art/packs/` plus `impressionists` (bundled/offline).
 
+Optional [brightness observation](brightness.md) has its own strict `brightness`
+JSON section, disabled by default. It requires non-demo HA reads and a distinct
+`BRIGHTNESS_TELEMETRY_TOKEN` for normal-shell status reporting. It has no
+TV-setting write path; power, colour, control/restoration and deployment are
+separate gates. The one-shot `npm run brightness:observe` needs no content/OIDC
+setup, never opens a listener and cannot establish foreground ownership.
+
 ## Health and diagnostics
 
 `GET /healthz` is unauthenticated process liveness, not proof of working

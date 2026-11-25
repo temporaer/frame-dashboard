@@ -1,0 +1,26 @@
+{
+  "brightness": {
+    "enabled": false,
+    "luxEntity": "sensor.room_illuminance",
+    "backlightEntity": "number.screen_backlight",
+    "tvEntity": "media_player.screen",
+    "appId": "FrameHs001.Dashboard",
+    "artAttribute": "art_mode_status",
+    "luxMaxAgeSeconds": 120,
+    "backlightMaxAgeSeconds": 120,
+    "tvMaxAgeSeconds": 120,
+    "pollSeconds": 30,
+    "leaseSeconds": 30,
+    "heartbeatSeconds": 10,
+    "smoothingSeconds": 30,
+    "deadband": 2,
+    "minChangeSeconds": 60,
+    "min": 10,
+    "max": 20,
+    "curve": [
+      { "lux": 0, "value": 10 },
+      { "lux": 100, "value": 15 },
+      { "lux": 1000, "value": 20 }
+    ]
+  }
+}

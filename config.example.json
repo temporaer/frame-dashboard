@@ -9,5 +9,6 @@
   "ownerIds": [],
   "projectIds": [],
   "tagIds": [],
-  "artworkCacheMB": 256
+  "artworkCacheMB": 256,
+  "brightness": { "enabled": false }
 }

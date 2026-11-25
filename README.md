@@ -86,6 +86,10 @@ backups and rollback; [Tizen](docs/tizen.md) for packaging/install; and
 [native Art Mode](docs/art-mode.md) for safe optional rendering/TV setup.
 The [architecture](docs/architecture.md) records upstream audits and differences.
 
+An optional [brightness observer](docs/brightness.md), disabled by default,
+reports lux-based candidates and foreground/HA blocking reasons. It has **no
+TV-setting write path**; installing or enabling live control is not included.
+
 ## Optional container deployment
 
 Docker is not needed for local development. For an existing Docker VM:

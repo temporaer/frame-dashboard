@@ -6,6 +6,7 @@
     "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
     "start": "node --env-file-if-exists=.env.local scripts/server.mjs",
     "cli": "node --env-file-if-exists=.env.local scripts/dashboard.mjs",
+    "brightness:observe": "node --env-file-if-exists=.env.local scripts/brightness.mjs",
     "worker": "node --env-file-if-exists=.env.local scripts/worker.mjs",
     "test": "node --test test/*.test.js",
     "shell:config": "node --env-file-if-exists=.env.local scripts/shell-config.mjs",

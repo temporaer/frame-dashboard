@@ -18,7 +18,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     application=root.find("{http://tizen.org/ns/widgets}application")
     print(json.dumps({"files": sorted(z.namelist()), "application": application.attrib}))
 `, output], { encoding: 'utf8' }));
-  assert.deepEqual(details.files, ['config.xml', 'dashboard-url.js', 'icon.png', 'index.html', 'main.js']);
+  assert.deepEqual(details.files, ['config.xml', 'dashboard-url.js', 'icon.png', 'index.html', 'lease.js', 'main.js']);
   assert.equal(details.application.package.length, 10);
   assert.equal(details.application.id, 'FrameHs001.Dashboard');
   const bytes = await fs.readFile(output);
@@ -26,6 +26,32 @@ with zipfile.ZipFile(sys.argv[1]) as z:
   assert.deepEqual(await fs.readFile(output), bytes);
   await assert.rejects(packageTizen('https://frame.example/display?k=secret', output));
   await assert.rejects(packageTizen('https://secret@frame.example/display#token=' + 'x'.repeat(64), output));
+});
+
+test('optional normal-shell telemetry is private, HTTPS-only and never enters the iframe address', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'frame-telemetry-package-test-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const output = path.join(directory, 'telemetry.wgt');
+  const address = `https://frame.example/display#token=${'d'.repeat(32)}`;
+  const telemetryToken = 't'.repeat(32);
+  await packageTizen(address, output, { telemetryToken });
+  const generated = execFileSync(process.env.PYTHON || 'python3', ['-c', `
+import sys,zipfile
+with zipfile.ZipFile(sys.argv[1]) as z: print(z.read("dashboard-url.js").decode())
+`, output], { encoding: 'utf8' });
+  const [url, telemetry] = generated.trim().split('\n');
+  assert.doesNotMatch(url, new RegExp(telemetryToken));
+  assert.match(telemetry, new RegExp(telemetryToken));
+  assert.match(telemetry, /https:\/\/frame\.example\/api\/brightness\/lease/);
+  await assert.rejects(packageTizen(address, output, { telemetryToken: 'd'.repeat(32) }));
+  await assert.rejects(packageTizen(address.replace('https:', 'http:'), output, { telemetryToken }));
+  await assert.rejects(packageTizen(address, output, { telemetryToken: '' }));
+  await packageTizen(address, output);
+  const plain = execFileSync(process.env.PYTHON || 'python3', ['-c', `
+import sys,zipfile
+with zipfile.ZipFile(sys.argv[1]) as z: print(z.read("dashboard-url.js").decode())
+`, output], { encoding: 'utf8' });
+  assert.match(plain, /window.BRIGHTNESS_TELEMETRY = null/);
 });
 
 test('offline probe is reproducible, unprivileged and excludes the live shell and credential', async (t) => {

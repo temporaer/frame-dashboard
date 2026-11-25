@@ -31,17 +31,22 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as arch
   }
 }
 
-export async function packageTizen(address, output = path.join(ROOT, 'tizen/HouseholdFrame.unsigned.wgt')) {
+export async function packageTizen(address, output = path.join(ROOT, 'tizen/HouseholdFrame.unsigned.wgt'), { telemetryToken } = {}) {
   const url = new URL(address);
   const token = new URLSearchParams(url.hash.slice(1)).get('token');
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/display' || url.search || !token || token.length < 32) {
     throw new Error('DASHBOARD_URL must be an HTTP(S) /display URL with only a scoped #token= fragment');
   }
+  if (telemetryToken !== undefined && (typeof telemetryToken !== 'string' || telemetryToken.length < 32 ||
+      telemetryToken === token || url.protocol !== 'https:')) {
+    throw new Error('Optional Tizen telemetry requires trusted HTTPS and a distinct credential of at least 32 characters');
+  }
+  const telemetry = telemetryToken ? { endpoint: `${url.origin}/api/brightness/lease`, token: telemetryToken } : null;
   const manifest = await fs.readFile(path.join(ROOT, 'tizen/config.xml'), 'utf8');
   return packageWidget(
-    ['index.html', 'main.js', 'icon.png'],
+    ['index.html', 'main.js', 'lease.js', 'icon.png'],
     manifest.replace('<access origin="*"', `<access origin="${url.origin}"`),
-    { 'dashboard-url.js': `window.DASHBOARD_URL = ${JSON.stringify(url.toString())};\n` },
+    { 'dashboard-url.js': `window.DASHBOARD_URL = ${JSON.stringify(url.toString())};\nwindow.BRIGHTNESS_TELEMETRY = ${JSON.stringify(telemetry)};\n` },
     output,
   );
 }
@@ -56,7 +61,9 @@ export async function packageTizenProbe(output = path.join(ROOT, 'tizen/Househol
 if (process.argv[1] && path.resolve(process.argv[1]) === new URL(import.meta.url).pathname) {
   try {
     const probe = process.argv.includes('--probe');
-    const output = probe ? await packageTizenProbe() : await packageTizen(process.env.DASHBOARD_URL);
+    const output = probe ? await packageTizenProbe() : await packageTizen(process.env.DASHBOARD_URL, undefined, {
+      telemetryToken: process.env.TIZEN_BRIGHTNESS_TELEMETRY_TOKEN,
+    });
     process.stdout.write(`Unsigned widget: ${output}\n${probe
       ? 'Offline read-only probe; same app identity as the dashboard. No signing, installation or launch performed.'
       : 'Treat it as private: it contains the scoped display credential.'}\n`);

@@ -11,6 +11,7 @@ try {
   app.log('info', { event: 'listening', port: app.server.address().port, demo: config.demo });
   app.runtime.refreshAll().catch(() => app.log('error', { event: 'initial_cache_persist_failed' }));
   app.runtime.start();
+  app.observer.start();
   let stopping = false;
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, async () => {

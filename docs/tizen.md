@@ -28,6 +28,13 @@ retains last-good data across ordinary source/network failures, purges it after
 authorization failure, and detects hosted build changes. There is no periodic
 full iframe reload. Left/right and OK retain upstream week navigation.
 
+Optional [brightness observation telemetry](brightness.md) uses a separate
+shell-only credential and visible/ready foreground lease. It is not enabled by
+the display URL alone, does not enter the iframe, and never controls settings.
+Provision it explicitly with `TIZEN_BRIGHTNESS_TELEMETRY_TOKEN` when packaging
+the normal HTTPS shell; leave that variable unset otherwise. The offline probe
+below remains entirely network-free and contains no telemetry.
+
 ## Offline read-only capability probe
 
 ```sh
