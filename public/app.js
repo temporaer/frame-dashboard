@@ -29,7 +29,7 @@
       doneOf: '{d} von {n} erledigt',
       planned: ['Keine Vorhaben', '1 Vorhaben', '{n} Vorhaben'],
       now: 'Jetzt', minLeft: 'noch {m} Min.', inMin: 'in {m} Min.',
-      fromToday: 'Heute offen', noMeetings: 'Keine Termine',
+      fromToday: 'Heute noch offen', noMeetings: 'Keine Termine',
       doneForDay: 'Heute keine weiteren Termine', noTasks: 'Keine Vorhaben',
       noFocus: '', earlier: '{n} vorbei', more: '+{n} weitere',
       wrapped: 'Heute erledigt', updated: 'Stand {t}',
@@ -53,7 +53,7 @@
       now: 'Now',
       minLeft: '{m} min left',
       inMin: 'in {m} min',
-      fromToday: 'From today',
+      fromToday: 'Still open today',
       noMeetings: 'No meetings',
       doneForDay: 'No more meetings today',
       noTasks: 'Nothing planned',
@@ -82,7 +82,7 @@
       now: 'Ahora',
       minLeft: 'quedan {m} min',
       inMin: 'en {m} min',
-      fromToday: 'De hoy',
+      fromToday: 'Pendiente de hoy',
       noMeetings: 'Sin juntas',
       doneForDay: 'No hay más juntas hoy',
       noTasks: 'Nada planeado',
@@ -450,10 +450,10 @@
     if (allDayEvents.length > 2) allday.appendChild(el('li', 'more', t('more', { n: allDayEvents.length - 2 })));
 
     var timed = timedEvents(day);
-    $('schedule-count').textContent = plural('meetings', timed.length);
+    $('schedule-count').textContent = plural('meetings', day.events.length);
     if (!timed.length) {
-      list.appendChild(el('li', 'empty-line', t('noMeetings')));
-      return;
+      if (!allDayEvents.length) list.appendChild(el('li', 'empty-line', t('noMeetings')));
+      return { list: list, total: 0, allDay: { list: allday, total: allDayEvents.length } };
     }
 
     var t0 = now().getTime();
@@ -506,6 +506,7 @@
       list.appendChild(li);
     });
     if (overflow) list.appendChild(el('li', 'more', t('more', { n: overflow })));
+    return { list: list, total: shown.length, allDay: { list: allday, total: allDayEvents.length } };
   }
 
   // Plans written by hand may list tasks as plain strings.
@@ -520,8 +521,10 @@
   }
 
   function renderTasks(day, carried, evening) {
-    var list = $('tasks');
-    clear(list);
+    var ownList = $('tasks');
+    var carriedList = $('carried');
+    clear(ownList);
+    clear(carriedList);
 
     var own = tasksOf(day);
     var known = {};
@@ -553,28 +556,24 @@
         })
       );
 
-    $('tasks-count').textContent = evening
-      ? plural('planned', open.length + extra.length)
-      : own.length
-      ? t('doneOf', { d: done.length, n: own.length })
-      : '';
-
-    if (!all.length) {
-      list.appendChild(el('li', 'empty-line', t('noTasks')));
-      return;
-    }
+    ownList.parentNode.hidden = !own.length;
+    $('carried-block').hidden = !extra.length;
+    $('tasks-count').textContent = done.length && !evening
+      ? t('doneOf', { d: done.length, n: own.length }) : plural('planned', own.length);
+    $('carried-label').textContent = t('fromToday');
+    $('carried-count').textContent = plural('planned', extra.length);
 
     var limit = state.data && state.data.preferences ? state.data.preferences.maxVisibleTasks : MAX_TASKS;
     all.slice(0, limit).forEach(function (item) {
       var li = el('li', (item.task.done ? 'done' : '') + (item.task.attention ? ' attention' : ''));
       li.appendChild(el('span', 'tick'));
-      li.appendChild(el('span', 'task-text', item.task.text));
-      var tag = [item.carried ? t('fromToday') : '', item.task.tag || ''].filter(Boolean).join(' · ');
-      if (tag) li.appendChild(el('span', 'tag' + (item.carried ? ' carried' : ''), tag));
-      list.appendChild(li);
+      var copy = el('div', 'task-copy');
+      copy.appendChild(el('span', 'task-text', item.task.text));
+      if (item.task.tag) copy.appendChild(el('span', 'tag', item.task.tag));
+      li.appendChild(copy);
+      (item.carried ? carriedList : ownList).appendChild(li);
     });
-    if (all.length > limit) list.appendChild(el('li', 'more', t('more', { n: all.length - limit })));
-    fitTasks(list, all.length);
+    return [{ list: ownList, total: own.length }, { list: carriedList, total: extra.length }];
   }
 
   var MEDIUMS_ES = {
@@ -602,25 +601,33 @@
     return m && translations ? translations[m.toLowerCase()] || m : m;
   }
 
-  // Show as many to-dos as the column has room for: drop rows from the end
-  // (finished ones sink there first) until nothing overflows, and say how
-  // many are hidden. Uses layout sizes, which the stage's scale() ignores.
-  function fitTasks(list, total) {
+  function fitTasks(groups, events) {
     var day = $('day');
     var fits = function () {
       return day.scrollHeight <= day.clientHeight + 1;
     };
-    if (fits()) return;
-    var existing = list.querySelector('.more');
-    if (existing) list.removeChild(existing);
-    var more = el('li', 'more');
-    list.appendChild(more);
-    var rows = list.querySelectorAll('li:not(.more)');
-    for (var i = rows.length - 1; i >= 1; i--) {
-      list.removeChild(rows[i]);
-      more.textContent = t('more', { n: total - i });
-      if (fits()) return;
+    function overflow(group) {
+      var count = group.list.querySelectorAll('li:not(.more)').length;
+      var more = group.list.querySelector('.more');
+      if (group.total > count) {
+        if (!more) group.list.appendChild(more = el('li', 'more'));
+        more.textContent = t('more', { n: group.total - count });
+      } else if (more) {
+        group.list.removeChild(more);
+      }
     }
+    groups.forEach(overflow);
+    // Keep at least one visible item in each group; never let a busy calendar
+    // erase task context. Each group retains its own honest overflow count.
+    groups.slice().reverse().concat([events, events.allDay]).forEach(function (group) {
+      var rows = group.list.querySelectorAll('li:not(.more)');
+      while (!fits() && rows.length > 1) {
+        group.list.removeChild(rows[rows.length - 1]);
+        overflow(group);
+        rows = group.list.querySelectorAll('li:not(.more)');
+      }
+    });
+    if (!fits()) document.body.classList.add('dense');
   }
 
   var WORDS = {
@@ -742,7 +749,7 @@
     $('events').parentNode.hidden = !day.events.length;
     $('tasks').parentNode.hidden = !tasksOf(day).length && !carriedOpen.length;
 
-    $('eyebrow').textContent = fmtDay(state.selected || todayYmd, {
+    $('eyebrow').textContent = (evening ? t('tomorrow') + ' · ' : '') + fmtDay(day.date, {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
@@ -757,7 +764,7 @@
     focus.className = 'focus-text' + (day.focus ? '' : ' empty');
     focus.textContent = day.focus || (state.data.planned ? '' : t('noFocus'));
 
-    $('schedule-label').textContent = evening ? t('tomorrow') : t('schedule');
+    $('schedule-label').textContent = t('schedule');
     $('tasks-label').textContent = evening ? t('tasksTomorrow') : t('tasks');
 
     var carried =
@@ -767,8 +774,8 @@
           })
         : [];
 
-    renderEvents(day, live);
-    renderTasks(day, carried, evening);
+    var eventGroup = renderEvents(day, live);
+    var taskGroups = renderTasks(day, carried, evening);
 
     var recap = $('recap');
     var showRecap = evening && today && state.data.preferences && state.data.preferences.showCompletedRecap;
@@ -777,8 +784,8 @@
       $('recap-label').textContent = t('wrapped');
       $('recap-text').textContent = recapText(today, carried);
     }
-
     renderWeek(day.date);
+    fitTasks(taskGroups, eventGroup);
     renderStatus();
     // The painting belongs to the calendar day, not to the view: tonight's
     // painting is still today's.
@@ -820,6 +827,10 @@
         state.offline = false;
         store('fd:week', JSON.stringify(data));
         render();
+        if (document.fonts) {
+          document.fonts.ready.then(render);
+          document.fonts.addEventListener('loadingdone', render);
+        }
       })
       .catch(function (err) {
         if (err.message === 'unauthorized') return;

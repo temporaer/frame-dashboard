@@ -328,6 +328,12 @@ ol {
   overflow: hidden; /* app.js trims the to-do list to fit; never spill */
 }
 
+.day > header,
+.day > .block,
+.day > .recap {
+  flex-shrink: 0;
+}
+
 .eyebrow {
   font-weight: 500;
   font-size: 18px;
@@ -431,6 +437,13 @@ ol {
 }
 
 .allday li {
+  min-width: 0;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
   font-size: 18px;
   line-height: 24px;
   padding: 4px 14px;
@@ -463,7 +476,7 @@ ol {
 
 .events .title,
 .events .where {
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -527,40 +540,49 @@ ol {
 
 .tasks li {
   display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 6px 0;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8px 0;
 }
 
 .tick {
-  width: 22px;
-  height: 22px;
+  width: 8px;
+  height: 8px;
+  margin-top: 12px;
   flex-shrink: 0;
-  border-radius: 11px;
-  border: 1.5px solid var(--lichen);
+  border-radius: 4px;
+  border: 1px solid var(--lichen);
+}
+
+.task-copy {
+  flex: 1;
+  min-width: 0;
 }
 
 .task-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 25px;
-  line-height: 30px;
-  white-space: nowrap;
+  font-size: 26px;
+  line-height: 34px;
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .tag {
-  flex-shrink: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  margin-top: 4px;
   font-weight: 500;
   font-size: 14px;
   line-height: 18px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--lichen);
 }
 
-.tag.carried {
+.carried-block .kicker {
   color: var(--gilt);
 }
 
@@ -587,6 +609,12 @@ ol {
   font-style: italic;
   font-size: 26px;
   color: var(--lichen);
+}
+
+.allday li.more {
+  padding: 4px 14px;
+  font-size: 16px;
+  line-height: 24px;
 }
 
 .spacer {
@@ -654,9 +682,12 @@ ol {
 .bleed-art,
 .bleed-fill,
 .scrim,
-.credit,
-.placard {
+.credit {
   display: none;
+}
+
+.placard {
+  display: contents;
 }
 
 .bleed {
@@ -777,21 +808,25 @@ ol {
 }
 
 .bleed .placard {
-  display: block;
+  display: flex;
+  flex-direction: column;
   position: absolute;
   left: 1228px;
   top: 64px;
   width: 612px;
-  height: 952px;
+  max-height: 952px;
+  padding: 42px 48px 32px;
   background: var(--paper);
   box-shadow: 0 2px 3px rgba(0, 0, 0, 0.25), 0 30px 60px -20px rgba(0, 0, 0, 0.55);
 }
 
 .bleed .day {
-  left: 1284px;
-  top: 112px;
-  width: 500px;
-  height: 780px;
+  position: static;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  flex: 0 1 auto;
+  display: block;
   color: var(--ink);
 }
 
@@ -804,8 +839,8 @@ ol {
 
 .bleed .clock {
   padding-top: 8px;
-  font-size: 168px;
-  line-height: 150px;
+  font-size: 104px;
+  line-height: 104px;
 }
 
 .bleed .period {
@@ -881,8 +916,8 @@ ol {
 
 .bleed .events .title,
 .bleed .events .lead .title {
-  font-size: 24px;
-  line-height: 30px;
+  font-size: 25px;
+  line-height: 34px;
 }
 
 .bleed .events .lead .time {
@@ -904,26 +939,24 @@ ol {
 }
 
 .bleed .tasks li {
-  gap: 16px;
-  padding: 5px 0;
+  gap: 14px;
+  padding: 7px 0;
 }
 
 .bleed .tick {
-  width: 20px;
-  height: 20px;
   border-color: var(--ink);
 }
 
 .bleed .task-text {
-  font-size: 23px;
-  line-height: 28px;
+  font-size: 24px;
+  line-height: 32px;
 }
 
 .bleed .tag {
   color: var(--ink-2);
 }
 
-.bleed .tag.carried {
+.bleed .carried-block .kicker {
   color: var(--cobalt);
 }
 
@@ -942,15 +975,18 @@ ol {
 }
 
 .bleed .status {
-  right: 136px; /* inside the placard */
-  top: 994px;
-  color: var(--ink-2);
+  right: 80px;
+  top: auto;
+  bottom: 28px;
+  color: #f4efe4;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
 }
 
 .bleed .week {
-  left: 1284px;
-  top: 904px;
-  width: 500px;
+  position: static;
+  flex-shrink: 0;
+  width: auto;
+  margin-top: 28px;
   padding-top: 14px;
   border-top: 1px solid var(--ink);
 }
@@ -1000,6 +1036,17 @@ ol {
 .bleed .week .is-weekend .wk-day,
 .bleed .week .is-weekend .wk-num {
   color: #9a9385;
+}
+
+.dense .clock,
+.dense.bleed .clock {
+  font-size: 72px;
+  line-height: 76px;
+}
+
+.dense .block,
+.dense.bleed .block {
+  padding-top: 20px;
 }
 
 @media (prefers-reduced-motion: reduce) {
