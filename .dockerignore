@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+data
+artifacts
+.venv
+config.json
+*.wgt
+**/__pycache__
+.pytest_cache
+tizen
+android
+mac
+launcher

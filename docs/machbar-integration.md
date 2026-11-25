@@ -8,6 +8,8 @@ Machbar's SQLite database. Demo fixtures implement this contract.
 Implement and deploy this separately in `temporaer/machbar` before enabling
 live task fetching.
 
+Tracked separately: https://github.com/temporaer/machbar/issues/383
+
 ## Authentication
 
 Add a revocable, hashed integration credential restricted to `GET` on the

@@ -1,0 +1,56 @@
+services:
+  dashboard:
+    build: .
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      DASHBOARD_CONFIG: /app/config.json
+    ports:
+      - "${DASHBOARD_BIND_ADDRESS:-127.0.0.1}:4321:4321"
+    volumes:
+      - runtime:/data
+      - control:/data/art-control
+      - ./config.json:/app/config.json:ro
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+  art:
+    profiles: [art]
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      DASHBOARD_BACKEND_URL: http://dashboard:4321
+      WORKER_TOKEN: ${WORKER_TOKEN:-}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      ART_MODE_ENABLED: ${ART_MODE_ENABLED:-false}
+      TV_HOST: ${TV_HOST:-}
+      TV_PORT: ${TV_PORT:-8002}
+      TV_MATTE: ${TV_MATTE:-none}
+      TV_SAFE_PROBES_CONFIRMED: ${TV_SAFE_PROBES_CONFIRMED:-false}
+      ART_EVALUATION_SECONDS: ${ART_EVALUATION_SECONDS:-60}
+      ART_MIN_UPLOAD_INTERVAL_SECONDS: ${ART_MIN_UPLOAD_INTERVAL_SECONDS:-300}
+      ART_STATE_DIR: /state
+      ART_CONTROL_DIR: /control
+    volumes:
+      - artwork:/state
+      - control:/control:ro
+    depends_on:
+      dashboard:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+volumes:
+  runtime:
+  control:
+  artwork:
